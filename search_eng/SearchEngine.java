@@ -1,5 +1,4 @@
 package search_eng;
-import java.util.List;
 import java.util.ArrayList;
 
 public class SearchEngine {
