@@ -1,11 +1,13 @@
 import math
 import random
-from cards import *  
+
+NUM_PLAYERS=4
 
 class Room:
-    def __init__(self, num_players):
+    def __init__(self):
+        # dict later
         self.room = []  
-        for i in range(num_players):
+        for i in range(NUM_PLAYERS):
             name = input("Enter player name: ")
             self.room.append(Player(name))
 
@@ -14,11 +16,9 @@ class Room:
 class Player:
     def __init__(self, name):
         self.hand = []
+        self.starting = False
         self.turn = False
         self.name = name
-    
-    def take_card(self, card):
-        self.hand.append(card)
 
     def play_card(self):
         return

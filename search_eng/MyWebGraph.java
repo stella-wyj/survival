@@ -23,13 +23,6 @@ public class MyWebGraph {
 		return true;
 	}
 
-
-	/*
-	 * add an edge between two vertices.
-	 * returns true if the graph has changed as a result of this operation
-	 * false otherwise. An edge between two vertices can be added only if
-	 * both vertices belong to the graph.
-	 */
 	public boolean addEdge(String s, String t) {
 		WebVertex from = vertexList.get(s);
 		WebVertex to = vertexList.get(t);
@@ -39,19 +32,14 @@ public class MyWebGraph {
 		return from.addEdge(t);
 	}
 
-
-	// Returns an ArrayList of urls that are neighbors with the given url
     public ArrayList<String> getNeighbors(String url) {
         return vertexList.get(url).getNeighbors();
     }
 
-
-    // Returns a list of all urls in the graph
     public ArrayList<String> getVertices() {
 		return vertexList.keySet();
     }
 
-    // Returns the list of pages that have links to v
     public ArrayList<String> getEdgesInto(String v) {
 		ArrayList<String> incoming = new ArrayList<>();
 		for (String url : vertexList.keySet()) {
@@ -62,21 +50,15 @@ public class MyWebGraph {
 		return incoming;
     }
 
-
-    // Returns the number of links in the page with the specified url
     public int getOutDegree(String url) {
     	// NullPointerException raised if there's no vertex with specified url
         return vertexList.get(url).links.size();
     }
 
-    // sets the pageRank of a given url
     public void setPageRank(String url, double pr) {
         vertexList.get(url).rank = pr;
     }
 
-
-    // returns the page rank of a given url.
-    // If the vertex with the specified url doesn't exist, returns 0
     public double getPageRank(String url) {
         if (vertexList.get(url)!=null)
         	return (vertexList.get(url)).rank;
@@ -115,11 +97,7 @@ public class MyWebGraph {
 		public ArrayList<String> links;
 		private boolean visited;
 		private double rank;
-
-		/*
-		 *  Creates a vertex given a url.
-		 *  This vertex has no edges yet.
-		 */
+		
 		public WebVertex (String url) {
 			this.url = url;
 			this.links = new ArrayList<String>();

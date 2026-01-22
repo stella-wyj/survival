@@ -12,11 +12,6 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
-
-/* YOU SHOULD NOT NEED TO LOOK AT THIS CODE AT ALL.
-   BUT IT COULD BE INTERESTING FOR YOU TO SEE HOW IT WORKS. */
-
-// This class implements a simple parser for xml documents
 public class XmlParser {
     File inputFile;
     DocumentBuilderFactory dbFactory;
@@ -33,7 +28,6 @@ public class XmlParser {
         doc.getDocumentElement().normalize();
     }
     
-    // Search the xml file for the given webpage/url and return links contained in the webpage.
 	public ArrayList<String> getLinks(String url)
 	{
 		ArrayList<String> urls = new ArrayList<String>();
@@ -59,13 +53,11 @@ public class XmlParser {
 		return urls;
 	}
 	
-	// Search the xml file for the given webpage/url and return the text contents of the webpage.
 	public ArrayList<String> getContent(String url)
 	{
 		ArrayList<String> tokens = new ArrayList<String>();
 		NodeList webPages = doc.getElementsByTagName("webpage");
-			
-		// loop over available webpages in the xml file
+
 		for (int i = 0; i < webPages.getLength(); i++)
 		{	
 			Node webpage = webPages.item(i);
@@ -88,7 +80,6 @@ public class XmlParser {
 		return tokens;
 	}
 	
-	// Search the xml file for the given webpage/url and return the expected rank of the webpage.
 	public double getPageRank(String url)
 	{
 		NodeList webPages = doc.getElementsByTagName("webpage");
@@ -137,4 +128,4 @@ public class XmlParser {
     	
     	System.out.println("\nWebpage rank " + rank);
     }
-} // end of writeContent
+}

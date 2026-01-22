@@ -2,10 +2,7 @@
 from player import *
 from cards import *
 
-player1 = Player("Stella")
-my_deck = Deck(1)
+my_room = Room()
+my_deck = Deck(2)
 
-player1.take_card(my_deck.deal)
-
-
-for card in player1.hand:
+Deck.deal(my_deck.deck, my_room.room)

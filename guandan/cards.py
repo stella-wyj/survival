@@ -3,6 +3,7 @@ import random
 from player import *
 
 NUM_CARDS=52
+NUM_PLAYERS=4
 
 class Card:
     def __init__(self, suit, rank):
@@ -25,12 +26,12 @@ class Deck:
         self.deck.extend([Card("SJ", 14)]*num_decks) # small joker
         self.deck.extend([Card("BJ", 15)]*num_decks) # big joker
     
-    def deal(self, deck):
-        shuffled_deck = random.shuffle(deck)
-        for card in shuffled_deck:
-            return card
-
-
+    def deal(deck, players):
+        random.shuffle(deck)
+        random.shuffle(deck)
+        for i in range(len(deck)):
+            players[math.floor(i%NUM_PLAYERS)-1].hand.append(deck[i])
+            
 
 class Combos:
     def __init__(self):

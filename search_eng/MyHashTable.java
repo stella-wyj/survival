@@ -52,25 +52,13 @@ public class MyHashTable<K,V> implements Iterable<MyPair<K,V>>{
 		return this.capacity;
 	}
 
-	/**
-	 * Returns the buckets variable. Useful for testing  purposes.
-	 */
 	public ArrayList<LinkedList<MyPair<K,V>>> getBuckets(){
 		return this.buckets;
 	}
-
-	/**
-	 * Given a key, return the bucket position for the key.
-	 */
 	public int hashFunction(K key) {
 		int hashValue = Math.abs(key.hashCode()) % this.capacity;
 		return hashValue;
 	}
-
-	/**
-	 * Takes a key and a value as input and adds the corresponding HashPair
-	 * to this HashTable. Expected average run time  O(1)
-	 */
 	public V put(K key, V value) {
 		if ((double)size / capacity >= MAX_LOAD_FACTOR) {
 			rehash();
@@ -92,9 +80,6 @@ public class MyHashTable<K,V> implements Iterable<MyPair<K,V>>{
 		return null;
 	}
 
-	/**
-	 * Get the value corresponding to key. Expected average runtime O(1)
-	 */
 	public V get(K key) {
 		int index = hashFunction(key);
 		LinkedList<MyPair<K,V>> bucket = buckets.get(index);
@@ -107,10 +92,6 @@ public class MyHashTable<K,V> implements Iterable<MyPair<K,V>>{
 
 		return null;
 	}
-
-	/**
-	 * Remove the HashPair corresponding to key . Expected average runtime O(1)
-	 */
 	public V remove(K key) {
 		int index = hashFunction(key);
 		LinkedList<MyPair<K,V>> bucket = buckets.get(index);
@@ -128,10 +109,7 @@ public class MyHashTable<K,V> implements Iterable<MyPair<K,V>>{
 	}
 
 	/**
-	 * Method to double the size of the hashtable if load factor increases
 	 * beyond MAX_LOAD_FACTOR.
-	 * Made public for ease of testing.
-	 * Expected average runtime is O(m), where m is the number of buckets
 	 */
 	public void rehash() {
 		ArrayList<LinkedList<MyPair<K,V>>> oldBuckets = buckets;
@@ -151,10 +129,6 @@ public class MyHashTable<K,V> implements Iterable<MyPair<K,V>>{
 		}
 	}
 
-	/**
-	 * Return a list of all the keys present in this hashtable.
-	 * Expected average runtime is O(m), where m is the number of buckets
-	 */
 	public ArrayList<K> keySet() {
 		ArrayList<K> keys = new ArrayList<>();
 
@@ -167,10 +141,6 @@ public class MyHashTable<K,V> implements Iterable<MyPair<K,V>>{
 		return keys;
 	}
 
-	/**
-	 * Returns an ArrayList of unique values present in this hashtable.
-	 * Expected average runtime is O(m) where m is the number of buckets
-	 */
 	public ArrayList<V> values() {
 		ArrayList<V> values = new ArrayList<>();
 
@@ -185,10 +155,7 @@ public class MyHashTable<K,V> implements Iterable<MyPair<K,V>>{
 		return values;
 	}
 
-	/**
-	 * Returns an ArrayList of all the key-value pairs present in this hashtable.
-	 * Expected average runtime is O(m) where m is the number of buckets
-	 */
+
 	public ArrayList<MyPair<K, V>> entrySet() {
 		ArrayList<MyPair<K,V>> entries = new ArrayList<>();
 
@@ -215,13 +182,11 @@ public class MyHashTable<K,V> implements Iterable<MyPair<K,V>>{
 
 		@Override
 		public boolean hasNext() {
-			// Method should run in O(1)
 			return currentIndex < entries.size();
 		}
 
 		@Override
 		public MyPair<K,V> next() {
-			// Method should run in O(1)
 			return entries.get(currentIndex++);
 		}
 
