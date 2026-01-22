@@ -25,7 +25,7 @@ class Deck:
         self.deck.extend([Card("BJ", 15)]*num_decks) # big joker
     
     def deal(self):
-        random.shuffle()
+        shuffled_deck = random.shuffle(self.deck)
 
 
 class Combos:
