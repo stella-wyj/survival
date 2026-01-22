@@ -11,14 +11,14 @@ class Room:
 
 
 
-
 class Player:
     def __init__(self, name):
         self.hand = []
         self.turn = False
         self.name = name
     
-    
+    def take_card(self, card):
+        self.hand.append(card)
 
     def play_card(self):
         return

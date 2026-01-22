@@ -1,7 +1,8 @@
-NUM_CARDS=52
-
 import math
 import random
+from player import *
+
+NUM_CARDS=52
 
 class Card:
     def __init__(self, suit, rank):
@@ -24,8 +25,11 @@ class Deck:
         self.deck.extend([Card("SJ", 14)]*num_decks) # small joker
         self.deck.extend([Card("BJ", 15)]*num_decks) # big joker
     
-    def deal(self):
-        shuffled_deck = random.shuffle(self.deck)
+    def deal(self, deck):
+        shuffled_deck = random.shuffle(deck)
+        for card in shuffled_deck:
+            return card
+
 
 
 class Combos:
@@ -36,5 +40,4 @@ class Combos:
 
 # testingggg
 my_deck = Deck(2)
-for card in my_deck.deck:
-    print(card.suit, card.rank)
+
