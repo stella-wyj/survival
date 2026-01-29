@@ -21,4 +21,6 @@ class Player:
         self.next_play = None # will be players next combo play
         self.level = 1  # sheng ji (level)
 
+    def is_starting(self):
+        self.starting = True
 
