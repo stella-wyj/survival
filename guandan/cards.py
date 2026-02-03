@@ -79,13 +79,6 @@ class Deck:
             player.hand.sort(key=Card.get_rank)
 
 
-        # logic for playing combos
-        
-
-
-
-
-
 class Combos:
     COMBO_ORDER = {"single":1, "double":1, "triple": 1, "straight": 1, "tubes": 1, "full_house": 1, "plates":1,
                    "4_bomb":2, "5_bomb": 3, "6_bomb": 4, "7_bomb": 5, "8_bomb": 6} # tubes are double striaghts and plates are triple-triple

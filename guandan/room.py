@@ -24,3 +24,7 @@ class Player:
     def is_starting(self):
         self.starting = True
 
+    def get_next_play(self):
+        return self.next_play
+
+
