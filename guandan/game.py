@@ -20,8 +20,19 @@ class Game:
     def get_trump(self):
         return self.trump_num
 
-    def compare_plays():
-        return
+    def compare_plays(current, next_play):
+        # if the combos are the same, have to check the rank of the first card that's been played
+        # if the rank of first card of the next play is bigger than the current, then return true
+        if (current == next_play):
+            if(next_play.head > current.head):
+                return True
+            else:
+                return False
+        elif (current < next_play):
+            return True
+        else:
+            return False
+
 
     def is_bigger(current, next_play):
         return False
