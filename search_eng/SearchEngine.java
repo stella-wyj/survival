@@ -41,7 +41,6 @@ public class SearchEngine {
 	public void assignPageRanks(double epsilon) {
 		ArrayList<String> verts = internet.getVertices();
 		for(String v:verts) internet.setPageRank(v,1.0);
-		double d = 0.5;
 		while(true){
 			ArrayList<Double> next = computeRanks(verts);
 			boolean converged = true;
