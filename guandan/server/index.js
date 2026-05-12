@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const {
-    createDeck, shuddleDeck, slassifyCombination, beats, isWild,
+    createDeck, shuffleDeck, classifyCombination, beats,
     calcPromotion, levelToRank, RANKS, isBomb
 } = require('./gameLogic');
 
@@ -21,14 +21,14 @@ const rooms = {};
 
 function createRoom(roomId) {
     return {
-        is: roomId,
+        id: roomId,
         players: [],
         gameState: null,
         status: 'waiting', // will have waiting, playing, completed
     }
 }
 
-function createGameSate(players, prevResult = null) {
+function createGameState(players, prevResult = null) {
     const level = [2, 2];
     const state = {
         handNumber: 1,
@@ -61,7 +61,11 @@ function dealCards(state) {
     for (let i = 0; i < deck.length; i++) {
         state.players[i % 4].cards.push(deck[i]);
     }
-    state.players.forEach(p => { p.cardCount = p.cards.length; });
+    let cardId = 0;
+    state.players.forEach(p => {
+        p.cards = p.cards.map(c => ({ ...c, id: `c${cardId++}` }));
+        p.cardCount = p.cards.length;
+    });
     return state;
 }
 
@@ -74,7 +78,7 @@ function getTeamPlayers(state, team) {
 }
 
 function getPlayerById(state, id) {
-    return state.player.find(p => (p.id === id));
+    return state.players.find(p => p.id === id);
 }
 
 function getPublicGameState(state, forPlayerId) {
@@ -90,12 +94,12 @@ function getPublicGameState(state, forPlayerId) {
 
 function broadcastGameState(roomId) {
     const room = rooms[roomId];
-    if (!room) return;
+    if (!room?.gameState) return;
     const state = room.gameState;
     room.players.forEach(p => {
-        const socket = io.sockets.socket.get(p.socketId);
-        if (socket) {
-            socket.emit('gameState', getPublicGameState(state, p.id));
+        const sock = io.sockets.sockets.get(p.socketId);
+        if (sock) {
+            sock.emit('gameState', getPublicGameState(state, p.id));
         }
     });
 }
@@ -118,7 +122,7 @@ function startHand(room) {
 
 function nextTurn(state) {
     const seats = [0, 1, 2, 3];
-    const currentPlayer = getPLayerById(state, state.currentTurn);
+    const currentPlayer = getPlayerById(state, state.currentTurn);
     const currentSeat = currentPlayer.seat;
 
     let nextSeat = (currentSeat + 3) % 4;
@@ -140,17 +144,18 @@ function checkHandEnd(state) {
         const bothDone = teamPlayers.every(p => state.finishOrder.includes(p.id));
         if (bothDone) return team;
     }
+    return null;
 }
 
 function processHandEnd(room) {
     const state = room.gameState;
 
-    const finishorder = state.finishOrder;
+    const finishOrder = state.finishOrder;
     const first = getPlayerById(state, finishOrder[0]);
     const firstTeam = getTeam(first.seat);
 
     const winningPlayers = getTeamPlayers(state, firstTeam).map(p => p.id);
-    const secondWinnterIndex = finishOrder.findIndex((id, index) => index > 0 && winningPlayers.includes(id));
+    const secondWinnerIndex = finishOrder.findIndex((id, index) => index > 0 && winningPlayers.includes(id));
     const winType = secondWinnerIndex === 1 ? '1-2' : secondWinnerIndex === 2 ? '1-3' : '1-4';
 
     const losingTeam = 1 - firstTeam; // losing team will be 1 if winning team 0, 0 if winning team 1
@@ -158,7 +163,7 @@ function processHandEnd(room) {
 
     state.level[firstTeam] = Math.min(state.level[firstTeam] + promotion, 14);
     state.handResult = { winnerTeam: firstTeam, winType, promotion };
-    state.phase = 'roundEnd';
+    state.phase = 'handEnd';
 
     // switch attackers defenders to start new round
     state.atkTeam = firstTeam;
@@ -174,13 +179,13 @@ function processHandEnd(room) {
 }
 
 io.on('connection', (socket) => {
-    console.log('Connected:', socketId);
+    console.log('Connected:', socket.id);
 
     socket.on('createRoom', ({ name }, cb) => {
         const roomId = Math.random().toString(36).slice(2, 8).toUpperCase();
         rooms[roomId] = createRoom(roomId);
         const playerId = uuidv4();
-        const player = { id: playerId, name, seat: 0, socketIf: socket.id };
+        const player = { id: playerId, name, seat: 0, socketId: socket.id };
         rooms[roomId].players.push(player);
         socket.join(roomId);
         socket.data = { roomId, playerId };
@@ -188,7 +193,7 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('roomUpdate', getRoomInfo(roomId));
     });
 
-    socket.on('joinroom', ({ roomId, name }, cb) => {
+    socket.on('joinRoom', ({ roomId, name }, cb) => {
         const room = rooms[roomId];
         if (!room) return cb({ error: 'Room not found' });
         if (room.players.length >= 4) return cb({ error: 'Room is full' });
@@ -216,6 +221,7 @@ io.on('connection', (socket) => {
         room.gameState.declarerTeam = 0;
         room.gameState.declarerLevel = 2;
         startHand(room);
+        broadcastGameState(roomId);
     });
 
     socket.on('playCards', ({ cards }, cb) => {
@@ -336,6 +342,7 @@ io.on('connection', (socket) => {
         // Reset and start new hand
         room.gameState.handNumber++;
         startHand(room);
+        broadcastGameState(roomId);
     });
 
     socket.on('chat', ({ message }) => {
@@ -372,6 +379,17 @@ function getRoomInfo(roomId) {
         players: room.players.map(p => ({ id: p.id, name: p.name, seat: p.seat })),
     };
 }
+
+app.get('/', (_req, res) => {
+    const port = process.env.PORT || 3001;
+    res.type('html').send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Guandan server</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:36rem;margin:2rem;line-height:1.5">
+  <h1>Guandan API</h1>
+  <p>Game server on port <strong>${port}</strong> (HTTP + Socket.IO).</p>
+  <p>Run the client from <code>guandan/client</code> — e.g. <a href="http://localhost:5173">http://localhost:5173</a></p>
+</body></html>`);
+});
 
 app.get('/rooms/:id', (req, res) => {
     const room = rooms[req.params.id];

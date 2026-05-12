@@ -1,7 +1,5 @@
 // will be the core backend game lgic
 
-import { get } from "http";
-
 const SUITS = ['D', 'H', 'C', 'S'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
@@ -12,7 +10,7 @@ function createDeck() {
     for (let i = 0; i < 2; i++) {
         for (const suit of SUITS) {
             for (const rank of RANKS) {
-                deck.push({ suit, rank: `${rank}${suit}` });
+                deck.push({ suit, rank });
             }
         }
         // push two jokers of each kind
@@ -39,13 +37,13 @@ function getLevelOrderValue(card, level) {
     // if the card is the level, it is the trump card
     if (card.rank === trump) { return 14 };
 
-    const ntauralIndex = RANKS.indexOf(card.rank);
+    const naturalIndex = RANKS.indexOf(card.rank);
     return naturalIndex + 1; // will index the play from 1 to 13 (based on their ranks)
 }
 
 function isWild(card, level) {
     const trump = RANKS[level - 2];
-    return ((card.rank === trump) && (cards.suit == 'H'));
+    return card.rank === trump && card.suit === 'H';
 }
 
 function getNaturalValue(rank) {
@@ -68,7 +66,7 @@ function classifyCombination(play, level, declaredAs = null) {
     const effectiveValue = (c) => getLevelOrderValue(c, level);
 
     if (play.length === 1) {
-        return { type: 'single', rank: effectiveValue(play[0], play) };
+        return { type: 'single', rank: effectiveValue(play[0]) };
     }
     if (play.length == 2) {
         // check if pair
@@ -77,7 +75,7 @@ function classifyCombination(play, level, declaredAs = null) {
         return null;
     }
     if (play.length === 3) {
-        const triple = tryTriple(play < level);
+        const triple = tryTriple(play, level);
         if (triple !== null) return { type: 'triple', rank: triple, play };
         return null;
     }
@@ -163,44 +161,24 @@ function tryPair(cards, level) {
 
     if (!aWild && !bWild) {
         // pair if both are jokers
-        if (a.rank === 'RJ' && b.rank === 'RJ') return getLevelOrdervalue(a, level);
-        if (a.rank === 'BJ' && b.rank === 'BJ') return getLevelOrdervalue(a, level);
+        if (a.rank === 'RJ' && b.rank === 'RJ') return getLevelOrderValue(a, level);
+        if (a.rank === 'BJ' && b.rank === 'BJ') return getLevelOrderValue(a, level);
         // pair if same rank, can be different suits because suits dont matter unless wild card
         if (a.rank === b.rank) return getLevelOrderValue(a, level);
         return null;
     }
-    if ((aWild && bWild) || (a.rank === level && b.rank === level)) {
-        // if pair of wildcards, then bigger than A smaller than jokers pairs
-        // or if the pair are both trump numbers same thing
+    if (aWild && bWild) {
         const levelRankVal = 14;
         return levelRankVal;
     }
     const nonWild = aWild ? b : a;
-    if (nonWild.suit === 'joker') return null; // wild cards cant be jokers
-    return getlevelOrderValue(nonWild, level);
+    if (nonWild.suit === 'joker') return null;
+    return getLevelOrderValue(nonWild, level);
 }
 
-function tryTriple() {
-    if (cards.length != 3) { return null };
-    const wilds = cards.filter(c => isWild(c, level));
-    const nonWilds = cards.filter(c => isWild(c, level));
-
-    if (nonWilds.some(c => c.suit === 'joker')) return null; // if any of them are jokers, its not a trip
-
-    if (wilds.length === 0) {
-        if (nonWilds[0].rank === nonWilds[1].rank && nonWilds[1].rank === nonWilds[2].rank) {
-            return getlevelOrderValue(nonWilds[0], level);
-        }
-        return null
-    } else if (wilds.length === 1) {
-        if (nonWilds[0].rank === nonWilds[1].rank)
-            return getLevelOrderValue(nonWilds[0], level);
-        return null;
-    } else {
-        return getLevelOrderValue(nonwilds[0].rank, level);
-    }
-
-    // not possible to have 3 wilds cards
+function tryTriple(cards, level) {
+    if (cards.length !== 3) return null;
+    return tryNOfKind(cards, level, 3);
 }
 
 function tryNOfKind(cards, level, n) {
@@ -487,6 +465,6 @@ function levelToRank(level) {
 
 module.exports = {
     createDeck, shuffleDeck, classifyCombination, beats,
-    isWild, isLevelCard, getLevelOrderValue, calcPromotion,
+    isWild, getLevelOrderValue, calcPromotion,
     levelToRank, RANKS, isBomb
 };
