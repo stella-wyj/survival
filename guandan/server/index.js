@@ -7,6 +7,7 @@ const {
     createDeck, shuffleDeck, classifyCombination, beats,
     calcPromotion, levelToRank, RANKS, isBomb
 } = require('./gameLogic');
+const { takeBotTurn, getPersonality } = require('./botAgent');
 
 const app = express();
 app.use(cors());
@@ -19,23 +20,26 @@ const io = new Server(server, {
 
 const rooms = {};
 
+// ─── Room & state helpers ────────────────────────────────────────────────────
+
 function createRoom(roomId) {
     return {
         id: roomId,
-        players: [],
+        players: [],        // human players only (have socketId)
+        allPlayers: [],     // all 4 seats (humans + bots)
         gameState: null,
-        status: 'waiting', // will have waiting, playing, completed
-    }
+        status: 'waiting',
+        botTurnPending: false,
+    };
 }
 
-function createGameState(players, prevResult = null) {
-    const level = [2, 2];
-    const state = {
+function createGameState(allPlayers) {
+    return {
         handNumber: 1,
-        level,
+        level: [2, 2],
         atkTeam: 0,
         atkLevel: 2,
-        players: players.map(p => ({ ...p, cards: [], cardsCount: 27 })),
+        players: allPlayers.map(p => ({ ...p, cards: [], cardCount: 27 })),
         currentTrick: [],
         currentTrickLeader: null,
         currentTurn: null,
@@ -43,20 +47,18 @@ function createGameState(players, prevResult = null) {
         lastPlay: null,
         finishOrder: [],
         passCount: 0,
-        phase: 'dealing', // will have dealing, trading, playing, roundEnd, gameEnd
-        trading: null,
-        consecutiveAceFails: [0, 0], // for last level, 3 losses on aces
+        phase: 'dealing',
+        handResult: null,
+        consecutiveAceFails: [0, 0],
         deck: [],
         discarded: [],
         chat: [],
     };
-    return state;
 }
 
 function dealCards(state) {
     const deck = shuffleDeck(createDeck());
     state.deck = deck;
-
     state.players.forEach(p => { p.cards = []; });
     for (let i = 0; i < deck.length; i++) {
         state.players[i % 4].cards.push(deck[i]);
@@ -69,9 +71,7 @@ function dealCards(state) {
     return state;
 }
 
-function getTeam(seat) {
-    return seat % 2 === 0 ? 0 : 1;
-}
+function getTeam(seat) { return seat % 2 === 0 ? 0 : 1; }
 
 function getTeamPlayers(state, team) {
     return state.players.filter(p => getTeam(p.seat) === team);
@@ -87,7 +87,7 @@ function getPublicGameState(state, forPlayerId) {
         deck: [],
         players: state.players.map(p => ({
             ...p,
-            cards: p.id === forPlayerId ? p.cards : p.cards.map(() => ({ hidden: true }))
+            cards: p.id === forPlayerId ? p.cards : p.cards.map(() => ({ hidden: true })),
         })),
     };
 }
@@ -96,13 +96,37 @@ function broadcastGameState(roomId) {
     const room = rooms[roomId];
     if (!room?.gameState) return;
     const state = room.gameState;
+    // Send personalised view to each human
     room.players.forEach(p => {
         const sock = io.sockets.sockets.get(p.socketId);
-        if (sock) {
-            sock.emit('gameState', getPublicGameState(state, p.id));
-        }
+        if (sock) sock.emit('gameState', getPublicGameState(state, p.id));
     });
 }
+
+function broadcastChat(roomId, msg) {
+    const room = rooms[roomId];
+    if (!room) return;
+    room.gameState?.chat.push(msg);
+    io.to(roomId).emit('chat', msg);
+}
+
+function getRoomInfo(roomId) {
+    const room = rooms[roomId];
+    if (!room) return null;
+    return {
+        id: room.id,
+        status: room.status,
+        players: room.allPlayers.map(p => ({
+            id: p.id,
+            name: p.name,
+            seat: p.seat,
+            isBot: !!p.isBot,
+            botEmoji: p.personality?.emoji,
+        })),
+    };
+}
+
+// ─── Hand flow ────────────────────────────────────────────────────────────────
 
 function startHand(room) {
     const state = room.gameState;
@@ -121,62 +145,161 @@ function startHand(room) {
 }
 
 function nextTurn(state) {
-    const seats = [0, 1, 2, 3];
     const currentPlayer = getPlayerById(state, state.currentTurn);
-    const currentSeat = currentPlayer.seat;
-
-    let nextSeat = (currentSeat + 3) % 4;
-
+    if (!currentPlayer) return;
+    let nextSeat = (currentPlayer.seat + 3) % 4;
     for (let i = 0; i < 4; i++) {
-        // find next player and skip if they have no cards
-        const nextPlayer = state.players.find(p => p.seat === nextSeat);
-        if (nextPlayer && nextPlayer.cards.length > 0) {
-            state.currentTurn = nextPlayer.id;
+        const next = state.players.find(p => p.seat === nextSeat);
+        if (next && next.cards.length > 0) {
+            state.currentTurn = next.id;
             return;
         }
         nextSeat = (nextSeat + 3) % 4;
     }
 }
 
+function skipEmptyHands(state) {
+    for (let i = 0; i < 4; i++) {
+        const next = getPlayerById(state, state.currentTurn);
+        if (next && next.cards.length > 0) break;
+        nextTurn(state);
+    }
+}
+
 function checkHandEnd(state) {
     for (let team = 0; team < 2; team++) {
         const teamPlayers = getTeamPlayers(state, team);
-        const bothDone = teamPlayers.every(p => state.finishOrder.includes(p.id));
-        if (bothDone) return team;
+        if (teamPlayers.every(p => state.finishOrder.includes(p.id))) return team;
     }
     return null;
 }
 
 function processHandEnd(room) {
     const state = room.gameState;
-
-    const finishOrder = state.finishOrder;
-    const first = getPlayerById(state, finishOrder[0]);
+    const first = getPlayerById(state, state.finishOrder[0]);
     const firstTeam = getTeam(first.seat);
-
-    const winningPlayers = getTeamPlayers(state, firstTeam).map(p => p.id);
-    const secondWinnerIndex = finishOrder.findIndex((id, index) => index > 0 && winningPlayers.includes(id));
-    const winType = secondWinnerIndex === 1 ? '1-2' : secondWinnerIndex === 2 ? '1-3' : '1-4';
-
-    const losingTeam = 1 - firstTeam; // losing team will be 1 if winning team 0, 0 if winning team 1
+    const winningIds = getTeamPlayers(state, firstTeam).map(p => p.id);
+    const secondIdx = state.finishOrder.findIndex((id, i) => i > 0 && winningIds.includes(id));
+    const winType = secondIdx === 1 ? '1-2' : secondIdx === 2 ? '1-3' : '1-4';
     const promotion = calcPromotion(winType);
 
     state.level[firstTeam] = Math.min(state.level[firstTeam] + promotion, 14);
     state.handResult = { winnerTeam: firstTeam, winType, promotion };
     state.phase = 'handEnd';
-
-    // switch attackers defenders to start new round
     state.atkTeam = firstTeam;
-    state.atkLevel = state.level[firstTeam] > 14 ? 14 : state.level[firstTeam];
+    state.atkLevel = Math.min(state.level[firstTeam], 14);
 
-    // games end condition
-    if (state.level[firstTeam] >= 14 && (winType === '1-2' || winType === '1-3') && state.atkTeam === firstTeam) {
+    if (state.level[firstTeam] >= 14 && (winType === '1-2' || winType === '1-3')) {
         state.phase = 'gameEnd';
         state.winner = firstTeam;
     }
 
     broadcastGameState(room.id);
 }
+
+// ─── Core play/pass logic (shared by humans & bots) ──────────────────────────
+
+function applyPlay(room, playerId, cards, comboOverride) {
+    const state = room.gameState;
+    const player = getPlayerById(state, playerId);
+    if (!player) return { error: 'Player not found' };
+    if (state.currentTurn !== playerId) return { error: 'Not your turn' };
+
+    const level = state.atkLevel || 2;
+    const cardIds = cards.map(c => c.id);
+    const playerCardIds = player.cards.map(c => c.id);
+    if (!cardIds.every(id => playerCardIds.includes(id))) return { error: 'Cards not in hand' };
+
+    const combo = comboOverride || classifyCombination(cards, level);
+    if (!combo) return { error: 'Invalid combination' };
+    if (state.lastPlay && !beats(state.lastPlay.combo, combo)) return { error: 'Does not beat current play' };
+
+    player.cards = player.cards.filter(c => !cardIds.includes(c.id));
+    player.cardCount = player.cards.length;
+    state.lastPlay = { playerId, combo };
+    state.passCount = 0;
+    state.currentTrick.push({ playerId, cards, combo });
+
+    if (player.cards.length === 0) state.finishOrder.push(playerId);
+
+    const winnerTeam = checkHandEnd(state);
+    if (winnerTeam !== null) {
+        processHandEnd(room);
+        return { success: true, handEnded: true };
+    }
+
+    nextTurn(state);
+    skipEmptyHands(state);
+    broadcastGameState(room.id);
+    return { success: true };
+}
+
+function applyPass(room, playerId) {
+    const state = room.gameState;
+    if (state.currentTurn !== playerId) return { error: 'Not your turn' };
+    if (!state.lastPlay) return { error: 'Cannot pass as leader' };
+
+    state.passCount++;
+    state.currentTrick.push({ playerId, cards: null, pass: true });
+
+    if (state.passCount >= 3) {
+        const newLeader = getPlayerById(state, state.lastPlay.playerId);
+        if (newLeader && newLeader.cards.length > 0) {
+            state.currentTurn = newLeader.id;
+            state.currentTrickLeader = newLeader.id;
+        } else {
+            const team = getTeam(newLeader.seat);
+            const partner = getTeamPlayers(state, team).find(p => p.id !== newLeader.id);
+            if (partner && partner.cards.length > 0) {
+                state.currentTurn = partner.id;
+                state.currentTrickLeader = partner.id;
+            }
+        }
+        state.lastPlay = null;
+        state.passCount = 0;
+        state.currentTrick = [];
+    } else {
+        nextTurn(state);
+        skipEmptyHands(state);
+    }
+
+    broadcastGameState(room.id);
+    return { success: true };
+}
+
+// ─── Bot orchestration ────────────────────────────────────────────────────────
+
+function isBot(room, playerId) {
+    return room.allPlayers.find(p => p.id === playerId)?.isBot === true;
+}
+
+// Called after every state change — if it's a bot's turn, schedule their move
+function maybeScheduleBotTurn(room) {
+    if (!room.gameState || room.gameState.phase !== 'playing') return;
+    const currentId = room.gameState.currentTurn;
+    if (!currentId || !isBot(room, currentId)) return;
+    if (room.botTurnPending) return;
+
+    room.botTurnPending = true;
+
+    takeBotTurn(
+        room,
+        currentId,
+        (r, pid, cards, combo) => {
+            room.botTurnPending = false;
+            const result = applyPlay(r, pid, cards, combo);
+            if (!result.handEnded) maybeScheduleBotTurn(room);
+        },
+        (r, pid) => {
+            room.botTurnPending = false;
+            applyPass(r, pid);
+            maybeScheduleBotTurn(room);
+        },
+        broadcastChat,
+    );
+}
+
+// ─── Socket handlers ──────────────────────────────────────────────────────────
 
 io.on('connection', (socket) => {
     console.log('Connected:', socket.id);
@@ -185,8 +308,9 @@ io.on('connection', (socket) => {
         const roomId = Math.random().toString(36).slice(2, 8).toUpperCase();
         rooms[roomId] = createRoom(roomId);
         const playerId = uuidv4();
-        const player = { id: playerId, name, seat: 0, socketId: socket.id };
+        const player = { id: playerId, name, seat: 0, socketId: socket.id, isBot: false };
         rooms[roomId].players.push(player);
+        rooms[roomId].allPlayers.push(player);
         socket.join(roomId);
         socket.data = { roomId, playerId };
         cb({ roomId, playerId, seat: 0 });
@@ -196,153 +320,106 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', ({ roomId, name }, cb) => {
         const room = rooms[roomId];
         if (!room) return cb({ error: 'Room not found' });
-        if (room.players.length >= 4) return cb({ error: 'Room is full' });
+        if (room.allPlayers.length >= 4) return cb({ error: 'Room is full' });
         if (room.status === 'playing') return cb({ error: 'Game already started' });
 
-        const seat = [0, 1, 2, 3].find(s => !room.players.some(p => p.seat === s));
+        const seat = [0, 1, 2, 3].find(s => !room.allPlayers.some(p => p.seat === s));
         const playerId = uuidv4();
-        const player = { id: playerId, name, seat, socketId: socket.id };
+        const player = { id: playerId, name, seat, socketId: socket.id, isBot: false };
         room.players.push(player);
+        room.allPlayers.push(player);
         socket.join(roomId);
         socket.data = { roomId, playerId };
         cb({ roomId, playerId, seat });
         io.to(roomId).emit('roomUpdate', getRoomInfo(roomId));
     });
 
+    // Fill empty seats with AI bots and start immediately
+    socket.on('startWithBots', ({ roomId: rid, playerId: pid } = {}) => {
+        const { roomId, playerId } = socket.data || {};
+        const room = rooms[roomId];
+        if (!room) return;
+        if (room.players[0]?.id !== playerId) return; // only host
+
+        // Fill remaining seats with bots
+        const takenSeats = room.allPlayers.map(p => p.seat);
+        const emptySeats = [0, 1, 2, 3].filter(s => !takenSeats.includes(s));
+
+        let botNum = 0;
+        for (const seat of emptySeats) {
+            const personality = getPersonality(seat);
+            const bot = {
+                id: uuidv4(),
+                name: personality.name,
+                seat,
+                isBot: true,
+                personality,
+                socketId: null,
+                cards: [],
+                cardCount: 27,
+            };
+            room.allPlayers.push(bot);
+            botNum++;
+        }
+
+        room.status = 'playing';
+        room.gameState = createGameState(room.allPlayers);
+        room.gameState.level = [2, 2];
+        room.gameState.atkTeam = 0;
+        room.gameState.atkLevel = 2;
+        startHand(room);
+        broadcastGameState(roomId);
+        io.to(roomId).emit('roomUpdate', getRoomInfo(roomId));
+
+        // Kick off bot turns if needed
+        maybeScheduleBotTurn(room);
+    });
+
     socket.on('startGame', () => {
         const { roomId, playerId } = socket.data || {};
         const room = rooms[roomId];
-        if (!room || room.players.length < 4) return;
-        if (room.players[0].id !== playerId) return; // only host can start
+        if (!room || room.allPlayers.length < 4) return;
+        if (room.players[0]?.id !== playerId) return;
 
         room.status = 'playing';
-        room.gameState = createGameState(room.players);
+        room.gameState = createGameState(room.allPlayers);
         room.gameState.level = [2, 2];
-        room.gameState.declarerTeam = 0;
-        room.gameState.declarerLevel = 2;
+        room.gameState.atkTeam = 0;
+        room.gameState.atkLevel = 2;
         startHand(room);
         broadcastGameState(roomId);
+        io.to(roomId).emit('roomUpdate', getRoomInfo(roomId));
+        maybeScheduleBotTurn(room);
     });
 
     socket.on('playCards', ({ cards }, cb) => {
         const { roomId, playerId } = socket.data || {};
         const room = rooms[roomId];
         if (!room || !room.gameState) return cb?.({ error: 'No game' });
-        const state = room.gameState;
 
-        if (state.currentTurn !== playerId) return cb?.({ error: 'Not your turn' });
-
-        const player = getPlayerById(state, playerId);
-        if (!player) return cb?.({ error: 'Player not found' });
-
-        const level = state.declarerLevel;
-
-        // Validate cards are in player's hand
-        const cardIds = cards.map(c => c.id);
-        const playerCardIds = player.cards.map(c => c.id);
-        if (!cardIds.every(id => playerCardIds.includes(id))) {
-            return cb?.({ error: 'Cards not in hand' });
-        }
-
-        const combo = classifyCombination(cards, level);
-        if (!combo) return cb?.({ error: 'Invalid combination' });
-
-        // Check if it beats current trick
-        if (state.lastPlay && !beats(state.lastPlay.combo, combo)) {
-            return cb?.({ error: 'Does not beat current play' });
-        }
-
-        // Remove cards from hand
-        player.cards = player.cards.filter(c => !cardIds.includes(c.id));
-        player.cardCount = player.cards.length;
-
-        state.lastPlay = { playerId, combo };
-        state.passCount = 0;
-        state.currentTrick.push({ playerId, cards, combo });
-
-        // Check if player finished
-        if (player.cards.length === 0) {
-            state.finishOrder.push(playerId);
-        }
-
-        // Check hand end
-        const winnerTeam = checkHandEnd(state);
-        if (winnerTeam !== null) {
-            processHandEnd(room);
-            return cb?.({ success: true });
-        }
-
-        // Next turn
-        nextTurn(state);
-
-        // If next player has no cards, skip
-        let attempts = 0;
-        while (attempts < 4) {
-            const next = getPlayerById(state, state.currentTurn);
-            if (next && next.cards.length > 0) break;
-            nextTurn(state);
-            attempts++;
-        }
-
-        broadcastGameState(roomId);
-        cb?.({ success: true });
+        const result = applyPlay(room, playerId, cards);
+        cb?.(result);
+        if (result.success && !result.handEnded) maybeScheduleBotTurn(room);
     });
 
     socket.on('pass', (cb) => {
         const { roomId, playerId } = socket.data || {};
         const room = rooms[roomId];
-        if (!room || !room.gameState) return;
-        const state = room.gameState;
+        if (!room || !room.gameState) return cb?.({ error: 'No game' });
 
-        if (state.currentTurn !== playerId) return cb?.({ error: 'Not your turn' });
-        if (!state.lastPlay) return cb?.({ error: 'Cannot pass as leader' });
-
-        state.passCount++;
-        state.currentTrick.push({ playerId, cards: null, pass: true });
-
-        if (state.passCount >= 3) {
-            // Trick over - last player who played leads next
-            const newLeader = getPlayerById(state, state.lastPlay.playerId);
-            if (newLeader && newLeader.cards.length > 0) {
-                state.currentTurn = newLeader.id;
-                state.currentTrickLeader = newLeader.id;
-            } else {
-                // Partner leads
-                const team = getTeam(newLeader.seat);
-                const partner = getTeamPlayers(state, team).find(p => p.id !== newLeader.id);
-                if (partner && partner.cards.length > 0) {
-                    state.currentTurn = partner.id;
-                    state.currentTrickLeader = partner.id;
-                }
-            }
-            state.lastPlay = null;
-            state.passCount = 0;
-            state.currentTrick = [];
-        } else {
-            nextTurn(state);
-            // Skip empty hands
-            let attempts = 0;
-            while (attempts < 4) {
-                const next = getPlayerById(state, state.currentTurn);
-                if (next && next.cards.length > 0) break;
-                nextTurn(state);
-                attempts++;
-            }
-        }
-
-        broadcastGameState(roomId);
-        cb?.({ success: true });
+        const result = applyPass(room, playerId);
+        cb?.(result);
+        if (result.success) maybeScheduleBotTurn(room);
     });
 
     socket.on('nextHand', () => {
         const { roomId, playerId } = socket.data || {};
         const room = rooms[roomId];
-        if (!room || !room.gameState) return;
-        if (room.gameState.phase !== 'handEnd') return;
-        // Reset and start new hand
+        if (!room?.gameState || room.gameState.phase !== 'handEnd') return;
         room.gameState.handNumber++;
         startHand(room);
         broadcastGameState(roomId);
+        maybeScheduleBotTurn(room);
     });
 
     socket.on('chat', ({ message }) => {
@@ -350,9 +427,12 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         if (!room) return;
         const player = room.players.find(p => p.id === playerId);
-        const msg = { name: player?.name || 'Unknown', message, time: Date.now() };
-        room.gameState && room.gameState.chat.push(msg);
-        io.to(roomId).emit('chat', msg);
+        broadcastChat(roomId, {
+            name: player?.name || 'Unknown',
+            message,
+            time: Date.now(),
+            isBot: false,
+        });
     });
 
     socket.on('disconnect', () => {
@@ -360,6 +440,7 @@ io.on('connection', (socket) => {
         if (roomId && rooms[roomId]) {
             const room = rooms[roomId];
             room.players = room.players.filter(p => p.id !== playerId);
+            room.allPlayers = room.allPlayers.filter(p => p.id !== playerId || p.isBot);
             if (room.players.length === 0) {
                 delete rooms[roomId];
             } else {
@@ -370,24 +451,16 @@ io.on('connection', (socket) => {
     });
 });
 
-function getRoomInfo(roomId) {
-    const room = rooms[roomId];
-    if (!room) return null;
-    return {
-        id: room.id,
-        status: room.status,
-        players: room.players.map(p => ({ id: p.id, name: p.name, seat: p.seat })),
-    };
-}
+// ─── HTTP routes ──────────────────────────────────────────────────────────────
 
 app.get('/', (_req, res) => {
     const port = process.env.PORT || 3001;
     res.type('html').send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Guandan server</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:36rem;margin:2rem;line-height:1.5">
-  <h1>Guandan API</h1>
-  <p>Game server on port <strong>${port}</strong> (HTTP + Socket.IO).</p>
-  <p>Run the client from <code>guandan/client</code> — e.g. <a href="http://localhost:5173">http://localhost:5173</a></p>
+  <h1>掼蛋 Guandan API</h1>
+  <p>Game server running on port <strong>${port}</strong>.</p>
+  <p>Open the client at <a href="http://localhost:5173">http://localhost:5173</a></p>
 </body></html>`);
 });
 
