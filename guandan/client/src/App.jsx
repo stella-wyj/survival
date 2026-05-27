@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import { Lobby, WaitingRoom } from './components/Lobby';
 import { GameTable } from './components/GameTable';
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:3001';
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 
 function App() {
   const socketRef = useRef(null);
