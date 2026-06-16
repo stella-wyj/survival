@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import { Lobby, WaitingRoom } from './components/Lobby';
 import { GameTable } from './components/GameTable';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+const SERVER_URL = import.meta.env.PROD ? window.location.origin : 'http://localhost:3001';
 
 function App() {
   const socketRef = useRef(null);
@@ -40,7 +40,7 @@ function App() {
     });
 
     socket.on('connect_error', () => {
-      setError('Cannot connect to server. Make sure the server is running on port 3001.');
+      setError('Cannot connect to server.');
     });
 
     return () => socket.disconnect();
