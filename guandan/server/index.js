@@ -52,7 +52,7 @@ function createGameState(allPlayers) {
         consecutiveAceFails: [0, 0],
         deck: [],
         discarded: [],
-        chat: [],
+        // chat: [],
     };
 }
 
@@ -103,12 +103,12 @@ function broadcastGameState(roomId) {
     });
 }
 
-function broadcastChat(roomId, msg) {
-    const room = rooms[roomId];
-    if (!room) return;
-    room.gameState?.chat.push(msg);
-    io.to(roomId).emit('chat', msg);
-}
+// function broadcastChat(roomId, msg) {
+//     const room = rooms[roomId];
+//     if (!room) return;
+//     room.gameState?.chat.push(msg);
+//     io.to(roomId).emit('chat', msg);
+// }
 
 function getRoomInfo(roomId) {
     const room = rooms[roomId];
@@ -295,7 +295,7 @@ function maybeScheduleBotTurn(room) {
             applyPass(r, pid);
             maybeScheduleBotTurn(room);
         },
-        broadcastChat,
+        // broadcastChat,
     );
 }
 
@@ -415,6 +415,7 @@ io.on('connection', (socket) => {
     socket.on('nextHand', () => {
         const { roomId, playerId } = socket.data || {};
         const room = rooms[roomId];
+        room.gameState.phase = 'playing';
         if (!room?.gameState || room.gameState.phase !== 'handEnd') return;
         room.gameState.handNumber++;
         startHand(room);
@@ -422,18 +423,18 @@ io.on('connection', (socket) => {
         maybeScheduleBotTurn(room);
     });
 
-    socket.on('chat', ({ message }) => {
-        const { roomId, playerId } = socket.data || {};
-        const room = rooms[roomId];
-        if (!room) return;
-        const player = room.players.find(p => p.id === playerId);
-        broadcastChat(roomId, {
-            name: player?.name || 'Unknown',
-            message,
-            time: Date.now(),
-            isBot: false,
-        });
-    });
+    // socket.on('chat', ({ message }) => {
+    //     const { roomId, playerId } = socket.data || {};
+    //     const room = rooms[roomId];
+    //     if (!room) return;
+    //     const player = room.players.find(p => p.id === playerId);
+    //     broadcastChat(roomId, {
+    //         name: player?.name || 'Unknown',
+    //         message,
+    //         time: Date.now(),
+    //         isBot: false,
+    //     });
+    // });
 
     socket.on('disconnect', () => {
         const { roomId, playerId } = socket.data || {};

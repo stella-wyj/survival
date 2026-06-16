@@ -14,8 +14,8 @@ function App() {
   const [gameState, setGameState] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [error, setError] = useState(null);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatInput, setChatInput] = useState('');
+  // const [chatMessages, setChatMessages] = useState([]);
+  // const [chatInput, setChatInput] = useState('');
 
   useEffect(() => {
     const socket = io(SERVER_URL);
@@ -31,9 +31,9 @@ function App() {
       setSelectedIds(new Set());
     });
 
-    socket.on('chat', msg => {
-      setChatMessages(prev => [...prev.slice(-60), msg]);
-    });
+    // socket.on('chat', msg => {
+    //   setChatMessages(prev => [...prev.slice(-60), msg]);
+    // });
 
     socket.on('playerLeft', ({ playerId: pid }) => {
       console.log('Player left:', pid);
@@ -100,11 +100,11 @@ function App() {
     socketRef.current.emit('nextHand');
   }, []);
 
-  const handleChat = useCallback(() => {
-    if (!chatInput.trim()) return;
-    socketRef.current.emit('chat', { message: chatInput.trim() });
-    setChatInput('');
-  }, [chatInput]);
+  // const handleChat = useCallback(() => {
+  //   if (!chatInput.trim()) return;
+  //   socketRef.current.emit('chat', { message: chatInput.trim() });
+  //   setChatInput('');
+  // }, [chatInput]);
 
   if (error) {
     return (
@@ -153,7 +153,7 @@ function App() {
           onNextHand={handleNextHand}
         />
 
-        {/* Chat panel */}
+        {/* Chat panel
         <div style={{
           position: 'fixed', bottom: 0, right: 0, width: 280, height: 220,
           background: 'rgba(0,0,0,0.75)', borderTop: '1px solid rgba(255,255,255,0.1)',
@@ -193,7 +193,7 @@ function App() {
               border: 'none', cursor: 'pointer', fontSize: 14,
             }}>→</button>
           </div>
-        </div>
+        </div>  */}
       </div>
     );
   }

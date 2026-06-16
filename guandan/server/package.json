@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "build": "echo 'No build step required for server'",
     "start": "node index.js",
     "dev": "node --watch index.js"
   },

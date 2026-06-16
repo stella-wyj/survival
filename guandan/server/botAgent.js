@@ -1,13 +1,7 @@
-require('dotenv').config();
-// botAgent.js — AI-powered bot players using OpenAI
-// Each bot gets a personality and uses the OpenAI API to decide moves + make comments
+// botAgent.js — AI-powered bot players using Claude
+// Each bot gets a personality and uses the Anthropic API to decide moves + make comments
 
-const { OpenAI } = require('openai');
 const { classifyCombination, beats, isBomb, RANKS } = require('./gameLogic');
-
-// Initialize the OpenAI client.
-// It automatically looks for process.env.OPENAI_API_KEY under the hood.
-const openai = new OpenAI();
 
 // Bot personalities — influences their commentary style and play tendencies
 const BOT_PERSONALITIES = [
@@ -163,8 +157,8 @@ function findValidPlays(cards, lastPlay, level) {
   return valid;
 }
 
-// Call OpenAI API to decide what to play
-async function askOpenAIToPlay(botPlayer, state, level, validPlays, canPass) {
+// Call Claude API to decide what to play
+async function askClaudeToPlay(botPlayer, state, level, validPlays, canPass) {
   const personality = botPlayer.personality;
   const gameDesc = describeGameState(botPlayer, state, level);
 
@@ -185,8 +179,17 @@ RULES SUMMARY:
 - Play combinations: singles, pairs, triples, full houses (3+2), straights (5 consecutive), tubes (3 consecutive pairs), plates (2 consecutive triples).
 - Bombs beat all non-bombs. Higher bombs beat lower bombs.
 - First team with both players empty wins the hand.
+- Win 1-2 = +4 levels, 1-3 = +2 levels, 1-4 = +1 level. Reach Ace level and win 1-2 or 1-3 to win the game.
 
-Only include a comment sometimes (30% of the time), not every turn. Keep comments short and in character.`;
+DECISION FORMAT — respond with ONLY valid JSON, no markdown:
+{
+  "action": "play" or "pass",
+  "optionIndex": <number, only if action is "play">,
+  "comment": "<optional short in-game chat comment, 1-2 sentences max, in character, or null>"
+}
+
+Only include a comment sometimes (30% of the time), not every turn. Keep comments short and in character.
+Never include reasoning outside the JSON.`;
 
   const userPrompt = `${gameDesc}
 
@@ -194,39 +197,28 @@ VALID PLAYS:
 ${playsText}
 ${canPass ? 'You may also PASS.' : 'You cannot pass (you are leading the trick).'}
 
-Choose your action.`;
+Choose your action. Respond with JSON only.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // Lightweight and blazing fast for rapid turn calculations
-      max_tokens: 300,
-      temperature: 0.3,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      // Enforce JSON format using OpenAI's Structured Outputs Schema
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "bot_decision",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              action: { type: "string", enum: ["play", "pass"] },
-              optionIndex: { type: "integer", description: "The index of the valid play option chosen, required if action is play." },
-              comment: { type: ["string", "null"], description: "Optional chat comment in character." }
-            },
-            required: ["action", "optionIndex", "comment"],
-            additionalProperties: false
-          }
-        }
-      }
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 300,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
     });
 
-    const text = response.choices[0].message.content;
-    return JSON.parse(text);
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+
+    // Strip markdown fences if present
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+
+    return parsed;
   } catch (err) {
     console.error(`Bot ${botPlayer.name} API error:`, err.message);
     return null; // Fall back to heuristic
@@ -256,15 +248,14 @@ async function takeBotTurn(room, botPlayerId, applyPlay, applyPass, broadcastCha
   const canPass = !!state.lastPlay; // can only pass if someone already played
   const validPlays = findValidPlays(botPlayer.cards, state.lastPlay, level);
 
-  // Small human-like delay (1-2.5 seconds)
-  const delay = 1000 + Math.random() * 1500;
+  const delay = 3000 + Math.random() * 2000;
   await new Promise(r => setTimeout(r, delay));
 
   let decision = null;
 
   // Try AI decision
   try {
-    decision = await askOpenAIToPlay(botPlayer, state, level, validPlays, canPass);
+    decision = await askClaudeToPlay(botPlayer, state, level, validPlays, canPass);
   } catch (e) {
     console.error('Bot AI failed, using heuristic:', e.message);
   }
