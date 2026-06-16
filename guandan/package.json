@@ -9,8 +9,8 @@
     "build": "npm run server && npm run client",
     "start:server": "cd server && npm start",
     "start:client": "cd client && npm start",
-    "dev": "concurrently -n server,client -c blue,green \"npm run server\" \"npm run client\"",
-    "start": "concurrently -n server,client -c blue,green \"npm run server\" \"npm run client\""
+    "dev": "concurrently -n server,client -c blue,green \"npm run start:server\" \"npm run start:client\"",
+    "start": "concurrently -n server,client -c blue,green \"npm run start:server\" \"npm run start:client\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
