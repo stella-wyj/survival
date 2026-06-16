@@ -2,6 +2,8 @@
 
 A real-time multiplayer implementation of the Chinese card game Guandan (掼蛋), built with React and Socket.IO.
 
+PLAY IT LIVE AT: https://guandan-kvyi.onrender.com/
+
 ## Features
 - Real-time 4-player multiplayer via WebSockets
 - Full Guandan rules implementation including:
@@ -11,35 +13,6 @@ A real-time multiplayer implementation of the Chinese card game Guandan (掼蛋)
   - Level progression system (2 through Ace)
   - Win conditions and scoring
 
-## Setup & Installation
-
-### Prerequisites
-- Node.js 16+ 
-- npm
-
-### 1. Install dependencies
-
-```bash
-# From the guandan root directory
-npm run install:all
-
-# Or manually:
-cd server && npm install
-cd ../client && npm install
-```
-
-### 2. Run in development
-
-```bash
-# Install concurrently if not already:
-npm install
-
-# Run both server and client:
-# First run the server
-npm run dev
-
-# Second run the client
-npm run dev
 ```
 
 ## How to Play
