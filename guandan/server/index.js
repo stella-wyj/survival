@@ -416,7 +416,6 @@ io.on('connection', (socket) => {
     socket.on('nextHand', () => {
         const { roomId, playerId } = socket.data || {};
         const room = rooms[roomId];
-        room.gameState.phase = 'playing';
         if (!room?.gameState || room.gameState.phase !== 'handEnd') return;
         room.gameState.handNumber++;
         startHand(room);
