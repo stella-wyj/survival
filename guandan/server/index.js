@@ -8,6 +8,7 @@ const {
     calcPromotion, levelToRank, RANKS, isBomb
 } = require('./gameLogic');
 const { takeBotTurn, getPersonality } = require('./botAgent');
+const path = require('path');
 
 const app = express();
 app.use(cors());
@@ -454,15 +455,11 @@ io.on('connection', (socket) => {
 
 // ─── HTTP routes ──────────────────────────────────────────────────────────────
 
-app.get('/', (_req, res) => {
-    const port = process.env.PORT || 3001;
-    res.type('html').send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Guandan server</title></head>
-<body style="font-family:system-ui,sans-serif;max-width:36rem;margin:2rem;line-height:1.5">
-  <h1>掼蛋 Guandan API</h1>
-  <p>Game server running on port <strong>${port}</strong>.</p>
-  <p>Open the client at <a href="http://localhost:5173">http://localhost:5173</a></p>
-</body></html>`);
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
+// 2. Redirect all web requests to your frontend index.html file
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../client/dist', 'index.html'));
 });
 
 app.get('/rooms/:id', (req, res) => {
