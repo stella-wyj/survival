@@ -472,4 +472,4 @@ app.get('/rooms/:id', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => console.log(`Guandan server running on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`Guandan server running on port ${PORT}`));
